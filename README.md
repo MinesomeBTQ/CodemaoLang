@@ -1,2 +1,0 @@
-# CodemaoLang
-一个为编程猫api打造的高度包装的Python库
