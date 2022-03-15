@@ -77,7 +77,6 @@ usr = user('账号', '密码')
 | usr.auth.data             | dict | 所有信息组成的字典          |
 | usr.auth.token            | str  | token              |
 | usr.auth.phone_number     | str  | 手机号(如:123****4567) |
-|                           |      |                    |
 | usr.auth.has_password     | bool | 是否设置密码             |
 | usr.auth.is_weak_password | bool | 是否为弱密码             |
 
