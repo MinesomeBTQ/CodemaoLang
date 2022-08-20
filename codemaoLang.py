@@ -302,7 +302,7 @@ class user:
                 cookies = self.__cookies).json()
         try:
             xxxx = data['error_code']
-            raise UserError('评论作品失败')
+            raise UserError(data['error_message'])
         except KeyError:
             self.__log('在作品{}发布评论成功'.format(id))
             return data['id']
@@ -311,8 +311,12 @@ class user:
         data = _post('/nemo/v2/works/{}/like'.format(id),
                 cookies = self.__cookies,
                 data = {})
-        
-        self.__log('在作品{}点赞成功'.format(id))
+        try:
+            xxxx = data['error_code']
+            raise UserError(data['error_message'])
+        except KeyError:
+
+            self.__log('在作品{}点赞成功'.format(id))
             
 
     class info:
@@ -389,39 +393,90 @@ class user:
         data = _post('/web/work_shops/users/apply/join',cookies = self.__cookies,
                 data = {'id':workshop_id,
                         'qq':qq})
+        try:
+            xxxx = data['error_code']
+            raise UserError(data['error_message'])
+        except KeyError:
+            pass
         self.__log('申请成功')
         print(data)
-    #暂时不可用
+
+    
     def contribute_workshop(self,workshop_id:int,work_id:int):
         data = _post('/web/work_shops/works/contribute',cookies = self.__cookies,
                 data = {'id':workshop_id,
                         'work_id':work_id})
-        self.__log('功能暂时不知可不可用')
-        print(data)
-    #暂时不可用
+        
+        try:
+            xxxx = data['error_code']
+            raise UserError(data)
+        except KeyError:
+            self.__log('添加成功')
+    
     def rmwork_workshop(self,workshop_id:int,work_id:int):
         data = _post('/web/work_shops/works/remove',cookies = self.__cookies,
                 data = {'id':workshop_id,
                         'work_id':work_id})
         
-        self.__log('功能暂时不知可不可用')
-        print(data)
-    #暂时不可用
+        
+        try:
+            xxxx = data['error_code']
+            raise UserError(data)
+        except KeyError:
+            self.__log('移出成功')
+    
     def approveuser_workshop(self,workshop_id,user_id,status):
         data = _post('/web/work_shops/users/audit',cookies = self.__cookies,
                 data = {'id':workshop_id,
                     'status':status,
                     'user_id':user_id})
-        self.__log('功能暂时不知可不可用')
-        print(data)
+        
+        try:
+            xxxx = data['error_code']
+            raise UserError(data)
+        except KeyError:
+            self.__log('通过{}'.format(user_id))
 
-    #本功能制作中
-    #def get_message(self,_type):
-        #data = _get('/web/message-record?query_type={}&limit=20&offset=0'.format(_type),
-                    #cookies = self.__cookies).json()
+
+    def change_workshop_info(self,workshop_id,workshop_name,description, preview_url):
+        data = _post('/web/work_shops/update',cookies = self.__cookies,
+                data = {'id':workshop_id,
+                    'name':workshop_name,
+                    'description':description,
+                    'preview_url':preview_url}).json()
+        try:
+            xxxx = data['error_code']
+            raise UserError(data)
+        except KeyError:
+            pass
+        self.__log('修改成功')
+
+    def get_messages(self,num = 10):
+        data = _get('/web/message-record?query_type=COMMENT_REPLY&limit={}&offset=0'.format(num),
+                cookies = self.__cookies).json()
+        try:
+            xxxx = data['error_code']
+            raise UserError(data['error_message'])
+        except KeyError:
+            pass
+        message_items = data['items']
+
+        return message_items
+
+        
+
     
+
     def reload(self):
         self.__init__(self.identity, self.password)
+    
+    class message:
+       type:str
+       content:dict
+       sender_id: int
+       sender_nickname:str
+       sender_avatar_url:str
+
 
 
 class another:
@@ -740,3 +795,16 @@ class work:
         self.preview = data['preview']
         self.publish_time = data['publish_time']
         self.view_times = data['view_times']
+    
+def get_new_work(num = 5):
+    data = _get('/creation-tools/v1/pc/discover/newest-work?offset=0&limit={}'.format(num)).json()
+    return data['items']
+
+
+def get_homepage_work(_type:int):
+    '''
+    type = 1:点猫
+    type = 2:新作
+    '''
+    data = _get('/creation-tools/v1/pc/home/recommend-work?type={}'.format(_type)).json()
+    return data
