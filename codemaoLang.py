@@ -311,12 +311,10 @@ class user:
         data = _post('/nemo/v2/works/{}/like'.format(id),
                 cookies = self.__cookies,
                 data = {})
-        try:
-            xxxx = data['error_code']
-            raise UserError(data['error_message'])
-        except KeyError:
-
+        if int(data.status_code) == 200:
             self.__log('在作品{}点赞成功'.format(id))
+        else:
+            raise UserError('作品点赞失败，错误代码{}'.format(data.status_code))
             
 
     class info:
@@ -708,6 +706,62 @@ class post:
         self.tutorial_flag: int = data['tutorial_flag']
         self.updated_at: int = data['updated_at']
         self.user: __user = __user(data['user'])
+        
+    def get_replies(self,page = 1):
+        replies = _get(f'/web/forums/posts/{str(self.id)}/replies?page={str(page)}&limit=10&sort=-created_at').json()
+        try:
+            del replies['error_code']
+            raise UserError(replies['error_message'])
+        except KeyError:
+            pass
+            
+        return replies['items']
+
+class post_comments:
+    def __init__(self,data:list):
+        self.id_list = []
+        self.comment_dict = {}
+        for i in data:
+            comment_id = i['id']
+            self.id_list.append(comment_id)
+            self.comment_dict[comment_id] = i
+
+    def GetByID(self,id):
+        d = self.comment_dict[str(id)]
+
+        return d
+            
+    def GetByNum(self,num:int):
+        id = self.id_list[num]
+        d = self.comment_dict[id]
+
+        return d
+
+
+class comments:
+
+    class sender:
+        id:str
+        nickname:str
+        avatar_url:str
+        workshop_id:int
+        workshop_name:str
+
+    def __init__(self,data_):
+            
+        self.comment_id = data_['id']
+        self.sender.id = data_['user']['id']
+        self.sender.nickname = data_['user']['nickname']
+        self.sender.avatar_url = data_['user']['avatar_url']
+        self.sender.workshop_id = data_['user']['subject_id']
+        self.sender.workshop_name = data_['user']['work_shop_name']
+        self.top = data_['is_top']        
+        self.likes = data_['n_likes']
+        self.n_comments = data_['n_comments']
+        self.comments = data_['earliest_comments']
+        self.content = data_['content']
+
+        
 
 
 class workshop:
@@ -731,8 +785,8 @@ class workshop:
         self.created_at: int = data['created_at']
         self.updated_at: int = data['updated_at']
         
-        users = _get('/web/shops/{}/users?offset=1&limit=100'.format(workshop_id)).json()
-        #print(users)
+        users = _get('/web/shops/{}/users?offset=0&limit=100'.format(workshop_id)).json()
+        self.users = users
         self.user_num = users['total']
         u_info = []
         for i in users['items']:
@@ -808,3 +862,5 @@ def get_homepage_work(_type:int):
     '''
     data = _get('/creation-tools/v1/pc/home/recommend-work?type={}'.format(_type)).json()
     return data
+
+
