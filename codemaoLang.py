@@ -18,7 +18,7 @@
 #
 
 from typing import Union
-
+from time import sleep
 import requests
 import json
 
@@ -163,6 +163,7 @@ class user:
             }
         )
         self.__cookies = data.cookies
+        self.cookies = data.cookies
         data = data.json()
         try:
             if data['error_number'] == 2:
@@ -253,7 +254,7 @@ class user:
                 raise UserError('输入格式错误')
             else:
                 raise UserError('未知错误')
-        except json.JSONDecodeError:
+        except requests.exceptions.JSONDecodeError:
             self.reload()
             self.__log(f'设置{key}为{value}成功')
 
@@ -278,7 +279,7 @@ class user:
             else:
                 print(data)
                 raise UserError('未知错误')
-        except json.JSONDecodeError:
+        except requests.exceptions.JSONDecodeError:
             self.__log(f'设置新密码成功')
 
     def messages(self):
@@ -355,7 +356,7 @@ class user:
         data = None
         try:
             data = _delete('/web/forums/posts/' + str(post_id), cookies=self.__cookies).json()
-        except json.JSONDecodeError:
+        except requests.exceptions.JSONDecodeError:
             self.__log(f'删除帖子成功')
         try:
             del data['error_code']
@@ -386,18 +387,27 @@ class user:
         except KeyError:
             self.__log('回复成功')
             return data['id']
-    
+
+    def report_post(self,post_id:str,description:str,reason_id = 1):
+        data = _post('/web/reports/posts',
+                    cookies = self.__cookies,
+                    data = {'post_id':post_id,
+                            'description':description,
+                            'reason_id':reason_id})
+        print(data)
+        if int(data.status_code) == 201:
+            self.__log('举报帖子{}成功'.format(post_id))
+        else:
+            raise UserError('举报失败，错误代码{}'.format(data.status_code))
+
     def apply_workshop(self,workshop_id:int,qq = None):
         data = _post('/web/work_shops/users/apply/join',cookies = self.__cookies,
                 data = {'id':workshop_id,
                         'qq':qq})
-        try:
-            xxxx = data['error_code']
-            raise UserError(data['error_message'])
-        except KeyError:
-            pass
-        self.__log('申请成功')
-        print(data)
+        if int(data.status_code) == 200:
+            self.__log('申请成功')
+        else:
+            raise UserError('申请失败，错误代码{}'.format(data.status_code))
 
     
     def contribute_workshop(self,workshop_id:int,work_id:int):
@@ -462,18 +472,54 @@ class user:
         return message_items
 
         
-
+    def ddd(self,id:Union[str,int], times:int = 5, content:str = 'ddd'):
+        rep_id = self.reply_post(id,content)
+        for i in range(times-1):
+            self.reply_reply(rep_id,content)
+            sleep(4)
     
 
     def reload(self):
         self.__init__(self.identity, self.password)
     
-    class message:
-       type:str
-       content:dict
-       sender_id: int
-       sender_nickname:str
-       sender_avatar_url:str
+class messages:
+    def __init__(self,data:dict):
+        self.type = data['type']
+        content = json.loads(data['content'])
+        self.sender.id = content['sender']['id']
+        self.sender.nickname = content['sender']['nickname']
+        self.sender.avatar_url = content['sender']['avatar_url']
+        self.read = data['read_status']
+        message = content['message']
+        if 'COMMENT' in self.type:
+            self.id = message['business_id']
+            self.name = message['business_name']
+            self.comment = message['comment']
+            self.comment_id = message['comment_id']
+            if 'WORK' in self.type:
+                self.link = f'https://shequ.codemao.cn/work/{str(self.id)}'
+            elif 'POST' in self.type:
+                self.link = f'https://shequ.codemao.cn/community/{str(self.id)}'
+        elif 'REPLY' in self.type:
+            self.id = message['business_id']
+            self.name = message['business_name']
+            self.reply = message['reply']
+            self.reply_id = message['reply_id']
+            self.replied = message['replied']
+            self.replied_id = message['replied_id']
+            self.replied_user_nickname = message['replied_user_nickname']
+            if 'WORK_SHOP' in self.type:
+                self.link = f'https://shequ.codemao.cn/work_shop/{str(self.id)}'
+            elif 'WORK' in self.type:
+                self.link = f'https://shequ.codemao.cn/work/{str(self.id)}'
+            elif 'POST' in self.type:
+                self.link = f'https://shequ.codemao.cn/community/{str(self.id)}'
+            
+
+    class sender:
+        id:int
+        nickname:str
+        avatar_url:str
 
 
 
@@ -706,7 +752,7 @@ class post:
         self.tutorial_flag: int = data['tutorial_flag']
         self.updated_at: int = data['updated_at']
         self.user: __user = __user(data['user'])
-        
+
     def get_replies(self,page = 1):
         replies = _get(f'/web/forums/posts/{str(self.id)}/replies?page={str(page)}&limit=10&sort=-created_at').json()
         try:
@@ -716,26 +762,6 @@ class post:
             pass
             
         return replies['items']
-
-class post_comments:
-    def __init__(self,data:list):
-        self.id_list = []
-        self.comment_dict = {}
-        for i in data:
-            comment_id = i['id']
-            self.id_list.append(comment_id)
-            self.comment_dict[comment_id] = i
-
-    def GetByID(self,id):
-        d = self.comment_dict[str(id)]
-
-        return d
-            
-    def GetByNum(self,num:int):
-        id = self.id_list[num]
-        d = self.comment_dict[id]
-
-        return d
 
 
 class comments:
@@ -753,15 +779,18 @@ class comments:
         self.sender.id = data_['user']['id']
         self.sender.nickname = data_['user']['nickname']
         self.sender.avatar_url = data_['user']['avatar_url']
-        self.sender.workshop_id = data_['user']['subject_id']
-        self.sender.workshop_name = data_['user']['work_shop_name']
+        try:
+            self.sender.workshop_id = data_['user']['subject_id']
+            self.sender.workshop_name = data_['user']['work_shop_name']
+        except KeyError:
+            self.sender.workshop_id = None
+            self.sender.workshop_name = None
         self.top = data_['is_top']        
         self.likes = data_['n_likes']
         self.n_comments = data_['n_comments']
         self.comments = data_['earliest_comments']
         self.content = data_['content']
 
-        
 
 
 class workshop:
@@ -785,8 +814,8 @@ class workshop:
         self.created_at: int = data['created_at']
         self.updated_at: int = data['updated_at']
         
-        users = _get('/web/shops/{}/users?offset=0&limit=100'.format(workshop_id)).json()
-        self.users = users
+        users = _get('/web/shops/{}/users?offset=1&limit=100'.format(workshop_id)).json()
+        #print(users)
         self.user_num = users['total']
         u_info = []
         for i in users['items']:
@@ -797,8 +826,41 @@ class workshop:
             d['position'] = i['position']
             u_info.append(d)
         self.user_info = u_info
-        
+    
+    def get_discussion(self,num = 15):
+        d = _get(f'/web/discussions/14609/comments?source=WORK_SHOP&sort=-created_at&limit={num}&offset=0')
 
+        try:
+            del d['error_code']
+            raise UserError(d['error_message'])
+        except KeyError:
+            return d['items']
+
+class discussion:
+
+    class sender:
+        id:str
+        nickname:str
+        avatar_url:str
+        workshop_id:int
+        workshop_name:str
+
+    def __init__(self,data_):
+            
+        self.comment_id = data_['id']
+        self.sender.id = data_['user']['id']
+        self.sender.nickname = data_['user']['nickname']
+        self.sender.avatar_url = data_['user']['avatar_url']
+        try:
+            self.sender.workshop_id = data_['user']['subject_id']
+            self.sender.workshop_name = data_['user']['work_shop_name']
+        except KeyError:
+            self.sender.workshop_id = None
+            self.sender.workshop_name = None
+        self.top = data_['is_top']        
+        self.likes = data_['n_likes']
+        self.comments = data_['replies']
+        self.content = data_['content']
 
 
 def random_nickname():
@@ -808,6 +870,12 @@ class work:
     def __init__(self,id):
         data = _get('/tiger/work/tree/{}'.format(id)).json()
         detail = _get('/creation-tools/v1/works/{}'.format(id)).json()
+
+        try:
+            del detail['error_code']
+            raise UserError(detail['error_message'])
+        except KeyError:
+            pass
         self.type = detail['type']
         self.operation = detail['operation']
         self.description = detail['description']
@@ -820,35 +888,66 @@ class work:
         self.praise_times = detail['praise_times']
         self.fork_enable = detail['fork_enable']
         self.comment_times = detail['comment_times']
+        self.bcm_version = detail['bcm_version']
+        
+        self.labels = detail['work_label_list']
+        label_list = detail['work_label_list']
+        l = []
+        for i in label_list:
+            l.append(i['label_name'])
+        self.label_names = l
+
+        user_info = detail['user_info']
+        self.author.id = user_info['id']
+        self.author.avatar = user_info['avatar']
+        self.author.nickname = user_info['nickname']
+        self.author.description = user_info['description']
+        self.author.level = user_info['author_level']
+        self.author.workshop_level = user_info['consume_level']
+        self.author.official = user_info['is_official_certification']
+   
+
         try:
             del data['error_code']
-            raise UserError(data['error_message'])
+            self.tree_data = None
         except KeyError:
-            pass
-        self.data = data
-        self.author_id = data['author']['user_id']
-        self.author_name = data['author']['nickname']
-        c = []
-        for i in data['children']:
-            author_ = i['author']['nickname']
-            author_id = i['author']['user_id']
-            work_id = i['id']
-            d = {}
-            d['author'] = author_
-            d['author_id'] = author_id
-            d['work_id'] = work_id
-            c.append(d)
-        self.children = c
-        self.children_num = len(c)
-        self.collection_times = data['collection_times']
-        self.id = data['id']
-        self.is_deleted = data['is_deleted']
-        self.is_published = data['is_published']
-        self.parent_id = data['parent_id']
-        self.praise_times = data['praise_times']
-        self.preview = data['preview']
-        self.publish_time = data['publish_time']
-        self.view_times = data['view_times']
+            
+            self.data = data
+            self.author_id = data['author']['user_id']
+            self.author_name = data['author']['nickname']
+            c = []
+            for i in data['children']:
+                author_ = i['author']['nickname']
+                author_id = i['author']['user_id']
+                work_id = i['id']
+                d = {}
+                d['author'] = author_
+                d['author_id'] = author_id
+                d['work_id'] = work_id
+                c.append(d)
+
+            
+            self.children = c
+            self.children_num = len(c)
+            self.collection_times = data['collection_times']
+            self.id = data['id']
+            self.is_deleted = data['is_deleted']
+            self.is_published = data['is_published']
+            self.parent_id = data['parent_id']
+            self.praise_times = data['praise_times']
+            self.preview = data['preview']
+            self.publish_time = data['publish_time']
+            self.view_times = data['view_times']
+
+
+    class author:
+        id:int
+        avatar:str
+        nickname:str
+        description:str
+        level:int
+        workshop_level:int
+        official:int
     
 def get_new_work(num = 5):
     data = _get('/creation-tools/v1/pc/discover/newest-work?offset=0&limit={}'.format(num)).json()
@@ -862,5 +961,3 @@ def get_homepage_work(_type:int):
     '''
     data = _get('/creation-tools/v1/pc/home/recommend-work?type={}'.format(_type)).json()
     return data
-
-
