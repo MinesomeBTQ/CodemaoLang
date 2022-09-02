@@ -316,6 +316,21 @@ class user:
             self.__log('在作品{}点赞成功'.format(id))
         else:
             raise UserError('作品点赞失败，错误代码{}'.format(data.status_code))
+
+    def reply_work_comment(self,work_id,id,content,parent_id = 0):
+        data = _post(f'/creation-tools/v1/works/{work_id}/comment/{id}/reply',
+                    cookies = self.__cookies,
+                    data = {
+                        "parent_id": parent_id,
+                        "content": content
+                        })
+        
+        try:
+            xxxx = data['error_code']
+            raise UserError(data['error_message'])
+        except KeyError:
+            self.__log('在作品{}的{}发布评论成功'.format(work_id,id))
+            return data['id']
             
 
     class info:
@@ -401,15 +416,52 @@ class user:
             raise UserError('举报失败，错误代码{}'.format(data.status_code))
 
     def apply_workshop(self,workshop_id:int,qq = None):
+        w = workshop(workshop_id)
+        shop_id = w.shop_id
         data = _post('/web/work_shops/users/apply/join',cookies = self.__cookies,
-                data = {'id':workshop_id,
+                data = {'id':shop_id,
                         'qq':qq})
         if int(data.status_code) == 200:
             self.__log('申请成功')
         else:
             raise UserError('申请失败，错误代码{}'.format(data.status_code))
 
-    
+    def comment_workshop(self, workshop_id:int, content:str):
+        data = _post('/web/discussions/{}/comment'.format(workshop_id),cookies = self.__cookies,
+                    data = {
+                    "content": content,
+                    "rich_content": content,
+                    "source": "WORK_SHOP"
+                    }).json()
+        try:
+            a = data['error_message']
+            raise UserError(a)
+        except KeyError:
+            self.__log('发送评论成功')
+            return data['id']
+
+    def reply_workshop(self,workshop_id,id,content,parent_id = 0):
+        if parent_id == 0:
+            pass
+        else:
+            parent_id = str(parent_id)
+        data = _post(f'/web/discussions/{workshop_id}/comments/{id}/reply',
+                    cookies = self.__cookies,
+                    data = {
+                            "parent_id": parent_id,
+                            "content": content,
+                            "source": "WORK_SHOP"
+                            }).json()
+        try:
+            a = data['error_message']
+            raise UserError(a)
+        except KeyError:
+            self.__log('发送评论成功')
+            return data['id']
+        
+
+#
+#在找了
     def contribute_workshop(self,workshop_id:int,work_id:int):
         data = _post('/web/work_shops/works/contribute',cookies = self.__cookies,
                 data = {'id':workshop_id,
@@ -420,44 +472,133 @@ class user:
             raise UserError(data)
         except KeyError:
             self.__log('添加成功')
+  #  
     
     def rmwork_workshop(self,workshop_id:int,work_id:int):
-        data = _post('/web/work_shops/works/remove',cookies = self.__cookies,
-                data = {'id':workshop_id,
-                        'work_id':work_id})
-        
-        
+        w = workshop(workshop_id)
+        shop_id = w.shop_id
         try:
-            xxxx = data['error_code']
-            raise UserError(data)
+            data = _post('/web/work_shops/works/remove?id={}&work_id={}'.format(shop_id,work_id),
+                    cookies = self.__cookies,
+                    ).json()
+        except requests.exceptions.JSONDecodeError:
+            self.__log('移出{}成功'.format(work_id))
+        try:
+            del data['error_code']
+            raise UserError(data['error_message'])
+        except TypeError:
+            pass
         except KeyError:
-            self.__log('移出成功')
-    
+            raise UserError('出现异常，请重试')
+
+            
     def approveuser_workshop(self,workshop_id,user_id,status):
-        data = _post('/web/work_shops/users/audit',cookies = self.__cookies,
-                data = {'id':workshop_id,
-                    'status':status,
-                    'user_id':user_id})
-        
+        '''
+        status
+        ACCEPTED: 通过
+        UNACCEPTED: 不通过
+        '''
+        w = workshop(workshop_id)
+        shop_id = w.shop_id
         try:
-            xxxx = data['error_code']
-            raise UserError(data)
+            data = _post('/web/work_shops/users/audit',cookies = self.__cookies,
+                    data = {'id':shop_id,
+                        'status':status,
+                        'user_id':user_id}).json()
+        
+        except requests.exceptions.JSONDecodeError:
+            self.__log('通过/不通过成功')
+        try:
+            del data['error_code']
+            raise UserError(data['error_message'])
+        except TypeError:
+            pass
         except KeyError:
-            self.__log('通过{}'.format(user_id))
+            raise UserError('出现异常，请重试')
 
 
     def change_workshop_info(self,workshop_id,workshop_name,description, preview_url):
-        data = _post('/web/work_shops/update',cookies = self.__cookies,
-                data = {'id':workshop_id,
-                    'name':workshop_name,
-                    'description':description,
-                    'preview_url':preview_url}).json()
+        w = workshop(workshop_id)
+        shop_id = w.shop_id
         try:
-            xxxx = data['error_code']
-            raise UserError(data)
-        except KeyError:
+            data = _post('/web/work_shops/update',cookies = self.__cookies,
+                    data = {'id':shop_id,
+                        'name':workshop_name,
+                        'description':description,
+                        'preview_url':preview_url}).json()
+        except requests.exceptions.JSONDecodeError:
+            self.__log('修改成功')
+        try:
+            del data['error_code']
+            raise UserError(data['error_message'])
+        except TypeError:
             pass
-        self.__log('修改成功')
+        except KeyError:
+            raise UserError('出现异常，请重试')
+
+    def change_user_pos(self,id:int, user_id: int, position: str):
+        '''
+        position:
+        STAFF:普通成员
+        DEPUTYLEADER: 副室长
+        LEADER：室长
+        '''
+        w = workshop(id)
+        shop_id = w.shop_id
+        try:
+            data = _post('/web/work_shops/users/position?id={}&user_id={}&work_shop_position={}'.format(shop_id,user_id,position),
+                        cookies = self.__cookies).json()
+
+        except requests.exceptions.JSONDecodeError:
+            self.__log('改变{}位置为{}'.format(user_id,position))
+        try:
+            del data['error_code']
+            raise UserError(data['error_message'])
+        except TypeError:
+            pass
+        except KeyError:
+            raise UserError('出现异常，请重试')
+
+    def rmuser_workshop(self,id,user_id):
+        w = workshop(id)
+        shop_id = w.shop_id
+
+        try:
+            data = _post('/web/work_shops/users/remove',cookies = self.__cookies,
+                        data = {
+                            "id":shop_id,
+                            "user_id":user_id
+
+                        }).json()
+
+        except requests.exceptions.JSONDecodeError:
+            self.__log('删除用户{}'.format(user_id))
+        try:
+            del data['error_code']
+            raise UserError(data['error_message'])
+        except TypeError:
+            pass
+        except KeyError:
+            raise UserError('出现异常，请重试')
+
+    def post_workshop(self,workshop_id,title,content):
+        data = _post(f'/web/works/subjects/{workshop_id}/post',
+                    cookies = self.__cookies,
+                    data = {
+                        "title": title,
+                        "content": content
+                        }
+                    ).json()
+
+        try:
+            a = data['error_message']
+            raise UserError(a)
+        except KeyError:
+            self.__log('工作室发帖成功')
+            return data['id']
+        
+
+        
 
     def get_messages(self,num = 10):
         data = _get('/web/message-record?query_type=COMMENT_REPLY&limit={}&offset=0'.format(num),
@@ -468,8 +609,9 @@ class user:
         except KeyError:
             pass
         message_items = data['items']
+        result = [messages(i) for i in message_items]
 
-        return message_items
+        return result
 
         
     def ddd(self,id:Union[str,int], times:int = 5, content:str = 'ddd'):
@@ -484,6 +626,7 @@ class user:
     
 class messages:
     def __init__(self,data:dict):
+        self.message_id = data['id']
         self.type = data['type']
         content = json.loads(data['content'])
         self.sender.id = content['sender']['id']
@@ -760,8 +903,9 @@ class post:
             raise UserError(replies['error_message'])
         except KeyError:
             pass
-            
-        return replies['items']
+        
+        result = [comments(i) for i in replies['items']]
+        return result
 
 
 class comments:
@@ -772,6 +916,11 @@ class comments:
         avatar_url:str
         workshop_id:int
         workshop_name:str
+
+    class reply_user:
+        id:Union[str,bool]
+        nickname:Union[str,bool]
+
 
     def __init__(self,data_):
             
@@ -788,8 +937,18 @@ class comments:
         self.top = data_['is_top']        
         self.likes = data_['n_likes']
         self.n_comments = data_['n_comments']
-        self.comments = data_['earliest_comments']
+        try:
+            self.comments = [comments(i) for i in data_['earliest_comments']]
+        except KeyError:
+            self.comments = []
         self.content = data_['content']
+        try:
+            self.reply_user.id = data_['reply_user']['id']
+            self.reply_user.nickname = data_['reply_user']['nickname']
+        except KeyError:
+            self.reply_user.id = None
+            self.reply_user.nickname = None
+
 
 
 
@@ -814,53 +973,20 @@ class workshop:
         self.created_at: int = data['created_at']
         self.updated_at: int = data['updated_at']
         
-        users = _get('/web/shops/{}/users?offset=1&limit=100'.format(workshop_id)).json()
+        users = _get('/web/shops/{}/users?offset=0&limit=100'.format(workshop_id)).json()
         #print(users)
         self.user_num = users['total']
-        u_info = []
-        for i in users['items']:
-            d = {}
-            d['user_id'] = i['user_id']
-            d['user_name'] = i['name']
-            d['qq'] = i['qq']
-            d['position'] = i['position']
-            u_info.append(d)
-        self.user_info = u_info
+        #这个在细化
+        self.user_info = users['items']
     
     def get_discussion(self,num = 15):
-        d = _get(f'/web/discussions/14609/comments?source=WORK_SHOP&sort=-created_at&limit={num}&offset=0')
+        d = _get(f'/web/discussions/{self.id}/comments?source=WORK_SHOP&sort=-created_at&limit={num}&offset=0')
 
         try:
             del d['error_code']
             raise UserError(d['error_message'])
         except KeyError:
-            return d['items']
-
-class discussion:
-
-    class sender:
-        id:str
-        nickname:str
-        avatar_url:str
-        workshop_id:int
-        workshop_name:str
-
-    def __init__(self,data_):
-            
-        self.comment_id = data_['id']
-        self.sender.id = data_['user']['id']
-        self.sender.nickname = data_['user']['nickname']
-        self.sender.avatar_url = data_['user']['avatar_url']
-        try:
-            self.sender.workshop_id = data_['user']['subject_id']
-            self.sender.workshop_name = data_['user']['work_shop_name']
-        except KeyError:
-            self.sender.workshop_id = None
-            self.sender.workshop_name = None
-        self.top = data_['is_top']        
-        self.likes = data_['n_likes']
-        self.comments = data_['replies']
-        self.content = data_['content']
+            return [comments(i) for i in d['items']]
 
 
 def random_nickname():
@@ -868,7 +994,11 @@ def random_nickname():
 
 class work:
     def __init__(self,id):
-        data = _get('/tiger/work/tree/{}'.format(id)).json()
+        
+        try:
+            data = _get('/tiger/work/tree/{}'.format(id)).json()
+        except requests.exceptions.JSONDecodeError:
+            data = {'error_code':114514}
         detail = _get('/creation-tools/v1/works/{}'.format(id)).json()
 
         try:
@@ -876,6 +1006,8 @@ class work:
             raise UserError(detail['error_message'])
         except KeyError:
             pass
+        self.id = detail['id']
+        self.name = detail['work_name']
         self.type = detail['type']
         self.operation = detail['operation']
         self.description = detail['description']
@@ -896,16 +1028,23 @@ class work:
         for i in label_list:
             l.append(i['label_name'])
         self.label_names = l
-
+        
         user_info = detail['user_info']
         self.author.id = user_info['id']
         self.author.avatar = user_info['avatar']
         self.author.nickname = user_info['nickname']
         self.author.description = user_info['description']
         self.author.level = user_info['author_level']
-        self.author.workshop_level = user_info['consume_level']
+        try:
+            self.author.workshop_level = user_info['consume_level']
+        except KeyError:
+            self.author.workshop_level = None
         self.author.official = user_info['is_official_certification']
-   
+
+        status = detail['abilities']
+        self.status.praised = status['is_praised']
+        self.status.collected = status['is_collected']
+        self.status.owned = status['is_owned']
 
         try:
             del data['error_code']
@@ -946,8 +1085,13 @@ class work:
         nickname:str
         description:str
         level:int
-        workshop_level:int
+        workshop_level:Union[int,bool]
         official:int
+
+    class status:
+        praised:bool
+        collected:bool
+        owned:bool
     
 def get_new_work(num = 5):
     data = _get('/creation-tools/v1/pc/discover/newest-work?offset=0&limit={}'.format(num)).json()
